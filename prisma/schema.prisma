@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+ output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  
+  // --- AUTHENTICATION (The "No Sign-Up" Magic) ---
+  // The Freelancer's Secret Key (stored in LocalStorage)
+  // Access: Can see audit logs, upload files, delete project
+  adminToken  String   @unique @default(uuid()) 
+  
+  // The Client's Share Key (sent via URL)
+  // Access: Can only View, Approve, or Reject
+  publicToken String   @unique @default(uuid()) 
+  
+  // --- WORKFLOW STATE ---
+  status      Status   @default(PENDING)
+
+  expiresAt DateTime?
+
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+
+  // --- RELATIONS ---
+  // "File?" is optional because Project is created BEFORE upload finishes
+  file        File?    
+  approvalDecision ApprovalDecision[]
+  logs        AuditLog[]
+}
+
+model ApprovalDecision {
+  id          String   @id @default(uuid())
+
+  decision    Status  
+  comment     String?
+
+  // Trust metadata
+  clientName  String?
+  clientEmail String?
+  ipAddress   String?
+  userAgent   String?
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+
+  createdAt   DateTime @default(now())
+}
+
+
+model File {
+  id          String   @id @default(uuid())
+  
+  fileName    String
+  mimeType    String   // e.g. "image/png", "application/pdf"
+  size        Int      // in bytes
+  
+  // The path inside Cloudflare R2
+  storageKey  String   
+  
+  // 1-to-1 Relation: One Project has exactly One File
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String   @unique 
+  
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  action      LogAction
+  
+  // Metadata for the "Trust" factor
+  ipAddress   String?
+  userAgent   String?  // e.g. "Chrome on iPhone"
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  
+  createdAt   DateTime @default(now())
+}
+
+// --- ENUMS (Strict Typing) ---
+enum Status {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+enum LogAction {
+  PROJECT_CREATED
+  FILE_UPLOADED
+  CLIENT_VIEWED
+  CLIENT_APPROVED
+  CLIENT_REQUESTED_CHANGES
+}

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment Variables (CRITICAL)
+.env
+.env.production
+.env.local
+
+# Compiled Output
+dist/
+build/
+coverage/
+
+# Prisma
+# Ignore the generated client if you are generating it into node_modules (default)
+# If you generate it to a custom path, ignore that path instead.
+generated/
+# Do NOT ignore prisma/schema.prisma or migrations
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+coverage/
+
+# Temporary files
+tmp/
+temp/
