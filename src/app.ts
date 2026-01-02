@@ -1,10 +1,10 @@
+import "reflect-metadata";
 import express, { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import * as dotenv from "dotenv";
-import "reflect-metadata";
 import rateLimit from "express-rate-limit";
-import prisma from "./utils/prismaClient";
+import { prisma } from "./utils/prismaClient";
 import { addRoutes } from "./config/routes.config";
 import { errorMiddleware } from "./middlewares/error.middleware";
 

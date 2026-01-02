@@ -1,5 +1,5 @@
 import { injectable } from "inversify";
-import  prisma  from "../utils/prismaClient";
+import { prisma } from "../utils/prismaClient";
 import { AppError } from "../errors/AppError";
 import { StatusCodes } from "http-status-codes";
 import {
