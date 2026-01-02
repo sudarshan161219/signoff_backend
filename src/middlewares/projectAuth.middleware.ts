@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import prisma from "../utils/prismaClient"; // Adjust path
+import { prisma } from "../utils/prismaClient"; // Adjust path
 import { AppError } from "../errors/AppError";
 import { StatusCodes } from "http-status-codes";
 
