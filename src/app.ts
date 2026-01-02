@@ -3,7 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import * as dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
-import { prisma } from "./utils/prismaClient";
+import prisma  from "./utils/prismaClient";
 import { addRoutes } from "./config/routes.config";
 import { errorMiddleware } from "./middlewares/error.middleware";
 

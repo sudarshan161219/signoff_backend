@@ -41,7 +41,7 @@ export class ProjectRouter {
           return;
         }
         // We need to bind context or use the arrow function properly
-        await this.projectController.create(req as any, res, next);
+        await this.projectController.create(req, res, next);
       }
     );
 
@@ -61,7 +61,7 @@ export class ProjectRouter {
       [param("token").isUUID().withMessage("Invalid project token")],
       async (req: Request, res: Response, next: NextFunction) => {
         // No body validation needed for GET, just params
-        await this.projectController.getPublicOne(req as any, res, next);
+        await this.projectController.getPublicOne(req, res, next);
       }
     );
 
@@ -83,7 +83,7 @@ export class ProjectRouter {
           res.status(400).json({ errors: errors.array() });
           return;
         }
-        await this.projectController.updateStatus(req as any, res, next);
+        await this.projectController.updateStatus(req, res, next);
       }
     );
 
