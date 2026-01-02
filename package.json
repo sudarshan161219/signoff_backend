@@ -7,9 +7,8 @@
     "start": "node dist/app.js",
     "start:dev": "prisma generate && nodemon --watch prisma --watch src --exec ts-node src/app.ts"
   },
-  
   "engines": {
-    "node": ">=18"
+    "node": "18.x"
   },
   "keywords": [],
   "author": "",

@@ -5,9 +5,12 @@ import { StorageService } from "../services/storage.service";
 import { AppError } from "../errors/AppError";
 import { StatusCodes } from "http-status-codes";
 
-// Interface for requests protected by 'requireProjectAdmin' middleware
-interface ProjectAuthRequest extends Request {
-  projectId?: string;
+declare global {
+  namespace Express {
+    interface Request {
+      projectId?: string;
+    }
+  }
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -38,7 +41,7 @@ export class StorageController {
    */
 
   async getUploadUrl(
-    req: ProjectAuthRequest,
+    req: Request ,
     res: Response,
     next: NextFunction
   ) {
@@ -107,7 +110,7 @@ export class StorageController {
    * POST /api/storage/confirm
    */
   async confirmUpload(
-    req: ProjectAuthRequest,
+    req: Request ,
     res: Response,
     next: NextFunction
   ) {
@@ -166,7 +169,7 @@ export class StorageController {
    * Used by the Dashboard (Admin) to view the file.
    */
   async getDownloadUrl(
-    req: ProjectAuthRequest,
+    req: Request ,
     res: Response,
     next: NextFunction
   ) {
@@ -201,7 +204,7 @@ export class StorageController {
    * GET /api/storage/list/:projectId
    */
   async getAttachments(
-    req: ProjectAuthRequest,
+    req: Request ,
     res: Response,
     next: NextFunction
   ) {
@@ -225,7 +228,7 @@ export class StorageController {
    * PATCH /api/storage/:id
    */
   async updateFilename(
-    req: ProjectAuthRequest,
+    req: Request ,
     res: Response,
     next: NextFunction
   ) {
@@ -242,7 +245,7 @@ export class StorageController {
    * DELETE /api/storage/:id
    */
   async deleteAttachments(
-    req: ProjectAuthRequest,
+    req: Request ,
     res: Response,
     next: NextFunction
   ) {

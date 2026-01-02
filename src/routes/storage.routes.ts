@@ -3,7 +3,7 @@ import { injectable, inject } from "inversify";
 import { TYPES } from "../types/types"; // Adjust path as needed
 import { StorageController } from "../controllers/storage.controller";
 import { requireProjectAdmin } from "../middlewares/projectAuth.middleware";
-import { wrapWithAuthFileRequest } from "../utils/wrapWithAuthRequest"; // You can likely rename this to wrapWithAuthRequest now
+import { wrapWithAuthFileRequest } from "../utils/wrapWithAuthRequest";
 
 @injectable()
 export class StorageRouter {

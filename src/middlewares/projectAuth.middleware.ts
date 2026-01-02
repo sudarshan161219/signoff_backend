@@ -3,7 +3,6 @@ import { prisma } from "../utils/prismaClient"; // Adjust path
 import { AppError } from "../errors/AppError";
 import { StatusCodes } from "http-status-codes";
 
-// Extend Express Request to include projectId
 declare global {
   namespace Express {
     interface Request {
