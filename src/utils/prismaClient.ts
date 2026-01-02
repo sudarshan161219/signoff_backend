@@ -17,16 +17,21 @@
 
 import { PrismaClient } from "@prisma/client";
 
-// 1. Define a global type to prevent TypeScript errors on 'globalThis'
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// 2. Initialize Prisma
-// We pass NO arguments to use the default config (which loads DATABASE_URL from .env)
-export const prisma = globalForPrisma.prisma || new PrismaClient();
+// Fix: Pass 'log' options to satisfy the "non-empty constructor" requirement
+// without triggering the "datasources: never" TypeScript error.
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log:
+      process.env.NODE_ENV === "development"
+        ? ["query", "error", "warn"]
+        : ["error"],
+  });
 
-// 3. Save the instance in development to prevent "Too many connections" errors during hot reloads
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
