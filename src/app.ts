@@ -36,7 +36,7 @@ export class App {
         origin:
           process.env.NODE_ENV === "production"
             ? process.env.FRONTEND_URL
-            : ["http://localhost:3000"],
+            : ["https://signoff-one.vercel.app"],
         credentials: true,
       })
     );
