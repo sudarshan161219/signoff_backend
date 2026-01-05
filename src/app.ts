@@ -17,7 +17,7 @@ export class App {
 
   constructor() {
     this.app = express();
-    this.port = Number(process.env.PORT) || 3000;
+    this.port = Number(process.env.PORT) || 8080;
 
     this.app.set("trust proxy", 1);
 
