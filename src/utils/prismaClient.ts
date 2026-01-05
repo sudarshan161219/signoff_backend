@@ -1,22 +1,15 @@
-import { PrismaClient } from "@prisma/client";
-
-export const prisma = new PrismaClient({});
-
 // import { PrismaClient } from "@prisma/client";
 
-// // FIX: Pass an empty object {} to satisfy the constructor check
-// const prismaClientSingleton = () => {
-//   return new PrismaClient({});
-// };
+// export const prisma = new PrismaClient({});
 
-// type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
+import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-// const globalForPrisma = globalThis as unknown as {
-//   prisma: PrismaClientSingleton | undefined;
-// };
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
 
-// const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
-
-// export default prisma;
-
-// if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma = new PrismaClient({
+  adapter,
+});
