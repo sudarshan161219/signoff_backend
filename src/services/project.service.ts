@@ -5,7 +5,12 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { AppError } from "../errors/AppError";
 import { StatusCodes } from "http-status-codes";
-import { Status, LogAction } from "@prisma/client";
+import {
+  ProjectStatus,
+  ApprovalDecisionType,
+  ActorRole,
+  LogAction,
+} from "@prisma/client";
 
 @injectable()
 export class ProjectService {
@@ -21,8 +26,12 @@ export class ProjectService {
       data: {
         name,
         expiresAt,
+        status: ProjectStatus.PENDING,
         logs: {
-          create: { action: LogAction.PROJECT_CREATED },
+          create: {
+            action: LogAction.PROJECT_CREATED,
+            actorRole: ActorRole.ADMIN,
+          },
         },
       },
     });
@@ -39,7 +48,7 @@ export class ProjectService {
       include: {
         file: true,
         logs: { orderBy: { createdAt: "desc" } },
-        approvalDecision: { orderBy: { createdAt: "desc" }, take: 1 },
+        decisions: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     });
 
@@ -61,7 +70,7 @@ export class ProjectService {
       }
     }
 
-    const [latestDecision] = project.approvalDecision;
+    const [latestDecision] = project.decisions;
 
     return {
       ...project,
@@ -83,7 +92,7 @@ export class ProjectService {
       where: { publicToken: token },
       include: {
         file: true,
-        approvalDecision: { orderBy: { createdAt: "desc" }, take: 1 },
+        decisions: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     });
 
@@ -102,10 +111,11 @@ export class ProjectService {
     prisma.auditLog
       .create({
         data: {
-          action: "CLIENT_VIEWED",
+          action: LogAction.CLIENT_VIEWED,
+          actorRole: ActorRole.CLIENT,
           projectId: project.id,
           ipAddress: ip,
-          userAgent: userAgent,
+          userAgent,
         },
       })
       .catch(console.error);
@@ -124,7 +134,7 @@ export class ProjectService {
       }
     }
 
-    const latestDecision = project.approvalDecision[0];
+    const latestDecision = project.decisions[0];
 
     return {
       name: project.name,
@@ -132,6 +142,7 @@ export class ProjectService {
       expiresAt: project.expiresAt, // Keep this for the "30 Days Left" badge
       file: project.file
         ? {
+            fileId: project.file.id,
             filename: project.file.fileName,
             mimeType: project.file.mimeType,
             size: project.file.size,
@@ -147,16 +158,15 @@ export class ProjectService {
    */
   async updateStatus(
     publicToken: string,
-    status: Status,
+    decision: ApprovalDecisionType,
     comment?: string,
     ip?: string,
     userAgent?: string
   ) {
-    // 1. Fetch project AND the latest decision to compare
     const project = await prisma.project.findUnique({
       where: { publicToken },
       include: {
-        approvalDecision: {
+        decisions: {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
@@ -167,64 +177,68 @@ export class ProjectService {
       throw new AppError({ message: "Project not found", statusCode: 404 });
     }
 
-    // 2. GLOBAL LOCK
-    if (project.status === "APPROVED") {
+    // Global lock
+    if (project.status === ProjectStatus.APPROVED) {
       throw new AppError({
-        message: "Project is already approved and locked.",
+        message: "Project already approved and locked.",
         statusCode: StatusCodes.BAD_REQUEST,
       });
     }
 
-    // 3. IDEMPOTENCY CHECK
-    const lastDecision = project.approvalDecision[0];
-    const isSameStatus = project.status === status;
-    const isSameComment = (lastDecision?.comment || "") === (comment || "");
+    const lastDecision = project.decisions[0];
 
-    if (isSameStatus && isSameComment) {
-      // Return the EXISTING data formatted correctly
+    // Idempotency
+    if (
+      lastDecision?.type === decision &&
+      (lastDecision?.comment || "") === (comment || "")
+    ) {
       return {
         ...project,
-        latestComment: lastDecision?.comment || null,
+        latestComment: lastDecision?.comment ?? null,
       };
     }
 
-    // 4. PERFORM UPDATE (With the Fix)
-    const updated = await prisma.project.update({
-      where: { id: project.id },
-      data: {
-        status,
-        approvalDecision: {
-          create: {
-            decision: status,
-            comment,
-            ipAddress: ip,
-            userAgent,
-          },
+    const newStatus =
+      decision === ApprovalDecisionType.APPROVED
+        ? ProjectStatus.APPROVED
+        : ProjectStatus.CHANGES_REQUESTED;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedProject = await tx.project.update({
+        where: { id: project.id },
+        data: { status: newStatus },
+      });
+
+      const newDecision = await tx.approvalDecision.create({
+        data: {
+          type: decision,
+          actorRole: ActorRole.CLIENT,
+          comment,
+          projectId: project.id,
+          ipAddress: ip,
+          userAgent,
         },
-        logs: {
-          create: {
-            action:
-              status === "APPROVED"
-                ? LogAction.CLIENT_APPROVED
-                : LogAction.CLIENT_REQUESTED_CHANGES,
-            ipAddress: ip,
-            userAgent,
-          },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action:
+            decision === ApprovalDecisionType.APPROVED
+              ? LogAction.CLIENT_APPROVED
+              : LogAction.CLIENT_REQUESTED_CHANGES,
+          actorRole: ActorRole.CLIENT,
+          projectId: project.id,
+          ipAddress: ip,
+          userAgent,
         },
-      },
-      // <--- THIS IS THE FIX: Tell Prisma to return the relation we just created
-      include: {
-        approvalDecision: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-        },
-      },
+      });
+
+      return { updatedProject, newDecision };
     });
 
-    // 5. Return a clean object including the comment
     return {
-      ...updated,
-      latestComment: updated.approvalDecision[0]?.comment || null,
+      ...updated.updatedProject,
+      latestComment: updated.newDecision.comment ?? null,
     };
   }
 
@@ -234,7 +248,15 @@ export class ProjectService {
 
     return await prisma.project.update({
       where: { adminToken },
-      data: { expiresAt },
+      data: {
+        expiresAt,
+        logs: {
+          create: {
+            action: LogAction.PROJECT_UPDATED,
+            actorRole: ActorRole.ADMIN,
+          },
+        },
+      },
     });
   }
 

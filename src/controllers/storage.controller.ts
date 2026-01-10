@@ -4,6 +4,7 @@ import { TYPES } from "../types/types";
 import { StorageService } from "../services/storage.service";
 import { AppError } from "../errors/AppError";
 import { StatusCodes } from "http-status-codes";
+import { getIO } from "../socket/index";
 
 declare global {
   namespace Express {
@@ -24,7 +25,7 @@ const ALLOWED_MIME_TYPES = [
 
 interface SignUrlBody {
   filename: string;
-  mimetype: string;
+  mimeType: string;
   size: number;
 }
 
@@ -39,16 +40,10 @@ export class StorageController {
    * STEP 1: Get Pre-signed PUT URL
    * POST /api/storage/sign-url
    */
-
-  async getUploadUrl(
-    req: Request ,
-    res: Response,
-    next: NextFunction
-  ) {
+  async getUploadUrl(req: Request, res: Response, next: NextFunction) {
     try {
-      // 1. projectId comes from the middleware (via x-admin-token)
       const projectId = req.projectId;
-      const { filename, mimetype, size: rawSize } = req.body as SignUrlBody;
+      const { filename, mimeType, size: rawSize } = req.body as SignUrlBody;
 
       if (!projectId) {
         throw new AppError({
@@ -57,14 +52,14 @@ export class StorageController {
         });
       }
 
-      if (!filename || !mimetype) {
+      if (!filename || !mimeType) {
         throw new AppError({
-          message: "Filename and mimetype are required",
+          message: "Filename and mimeType are required",
           statusCode: StatusCodes.BAD_REQUEST,
         });
       }
 
-      if (!ALLOWED_MIME_TYPES.includes(mimetype)) {
+      if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
         throw new AppError({
           message:
             "Invalid file type. Only PNG, JPG, WEBP, JPEG and PDF are allowed.",
@@ -81,7 +76,6 @@ export class StorageController {
 
       const size = Number(rawSize);
 
-      // --- LIMITATION 2: FILE SIZE ---
       if (isNaN(size) || size <= 0 || size > MAX_FILE_SIZE) {
         throw new AppError({
           message: "Invalid file size. Maximum size is 50MB.",
@@ -89,16 +83,15 @@ export class StorageController {
         });
       }
 
-      // 2. Call Service
       const data = await this.storageService.getUploadUrl(
         filename,
-        mimetype,
+        mimeType,
         projectId
       );
 
       res.status(StatusCodes.OK).json({
         message: "Upload authorized",
-        ...data, // Returns { uploadUrl, key }
+        ...data,
       });
     } catch (error) {
       next(error);
@@ -109,14 +102,10 @@ export class StorageController {
    * STEP 2: Confirm Upload
    * POST /api/storage/confirm
    */
-  async confirmUpload(
-    req: Request ,
-    res: Response,
-    next: NextFunction
-  ) {
+  async confirmUpload(req: Request, res: Response, next: NextFunction) {
     try {
       const projectId = req.projectId;
-      const { key, filename, size, mimetype } = req.body;
+      const { key, filename, size, mimeType } = req.body;
 
       if (!projectId) {
         throw new AppError({
@@ -132,7 +121,14 @@ export class StorageController {
         });
       }
 
-      if (!ALLOWED_MIME_TYPES.includes(mimetype)) {
+      if (!mimeType || typeof mimeType !== "string") {
+        throw new AppError({
+          message: "Missing or invalid mimeType",
+          statusCode: StatusCodes.BAD_REQUEST,
+        });
+      }
+
+      if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
         throw new AppError({
           message: "Invalid file type",
           statusCode: StatusCodes.BAD_REQUEST,
@@ -151,8 +147,16 @@ export class StorageController {
         key,
         filename,
         size,
-        mimeType: mimetype,
+        mimeType: mimeType,
       });
+
+      // 2. SOCKET EMIT: File Uploaded
+      try {
+        const io = getIO();
+        io.to(`project:${projectId}`).emit("file-uploaded", attachment);
+      } catch (err) {
+        console.error("⚠️ Socket emit failed (non-critical):", err);
+      }
 
       res.status(StatusCodes.CREATED).json({
         message: "File successfully attached to project",
@@ -166,16 +170,12 @@ export class StorageController {
   /**
    * Get Download Link (Secure)
    * GET /api/storage/download/:id
-   * Used by the Dashboard (Admin) to view the file.
    */
-  async getDownloadUrl(
-    req: Request ,
-    res: Response,
-    next: NextFunction
-  ) {
+  async getDownloadUrl(req: Request, res: Response, next: NextFunction) {
     try {
       const fileId = req.params.id;
       const projectId = req.projectId;
+      const forceDownload = req.query.download === "true";
 
       if (!projectId) {
         throw new AppError({
@@ -191,23 +191,23 @@ export class StorageController {
         });
       }
 
-      const data = await this.storageService.getDownloadUrl(fileId, projectId);
+      const data = await this.storageService.getDownloadUrl(
+        fileId,
+        projectId,
+        forceDownload
+      );
 
-      res.status(StatusCodes.OK).json(data); // Returns { url, filename }
+      res.status(StatusCodes.OK).json(data);
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * List Files (Optional Helper)
+   * List Files
    * GET /api/storage/list/:projectId
    */
-  async getAttachments(
-    req: Request ,
-    res: Response,
-    next: NextFunction
-  ) {
+  async getAttachments(req: Request, res: Response, next: NextFunction) {
     try {
       const projectId = req.projectId;
       if (!projectId)
@@ -224,16 +224,10 @@ export class StorageController {
   }
 
   /**
-   * Update Filename (Optional)
+   * Update Filename
    * PATCH /api/storage/:id
    */
-  async updateFilename(
-    req: Request ,
-    res: Response,
-    next: NextFunction
-  ) {
-    // Implementation depends on if you want to support renaming
-    // For MVP, you can leave this empty or remove it.
+  async updateFilename(req: Request, res: Response, next: NextFunction) {
     throw new AppError({
       message: "Renaming files is not supported",
       statusCode: StatusCodes.NOT_IMPLEMENTED,
@@ -242,20 +236,23 @@ export class StorageController {
 
   /**
    * Delete File
-   * DELETE /api/storage/:id
+   * POST /api/storage/:id/delete
    */
-  async deleteAttachments(
-    req: Request ,
-    res: Response,
-    next: NextFunction
-  ) {
+  async deleteAttachments(req: Request, res: Response, next: NextFunction) {
     try {
       const fileId = req.params.id;
-      const projectId = req.projectId;
+      // Using POST body for projectId
+      const { projectId } = req.body;
+
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        throw new AppError({ message: "Unauthorized", statusCode: 401 });
+      }
+      const token = authHeader.split(" ")[1];
 
       if (!projectId) {
         throw new AppError({
-          message: "Unauthorized",
+          message: "Unauthorized: Missing Project ID",
           statusCode: StatusCodes.UNAUTHORIZED,
         });
       }
@@ -267,7 +264,15 @@ export class StorageController {
         });
       }
 
-      await this.storageService.deleteAttachments(fileId, projectId);
+      await this.storageService.deleteAttachments(fileId, projectId, token);
+
+      // 3. SOCKET EMIT: File Deleted
+      try {
+        const io = getIO();
+        io.to(`project:${projectId}`).emit("file-deleted", { fileId });
+      } catch (err) {
+        console.error("⚠️ Socket emit failed (non-critical):", err);
+      }
 
       res
         .status(StatusCodes.OK)

@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { injectable, inject } from "inversify";
 import { body, param, validationResult } from "express-validator";
 import { TYPES } from "../types/types";
-import { Status } from "@prisma/client";
+import { ApprovalDecisionType } from "@prisma/client";
 import { ProjectController } from "../controllers/project.controller";
 
 @injectable()
@@ -72,9 +72,11 @@ export class ProjectRouter {
     this.router.post(
       "/:token/status",
       [
-        // Validate status is one of the allowed enums
-        body("status")
-          .isIn([Status.APPROVED, Status.CHANGES_REQUESTED])
+        body("decision")
+          .isIn([
+            ApprovalDecisionType.APPROVED,
+            ApprovalDecisionType.CHANGES_REQUESTED,
+          ])
           .withMessage("Invalid status"),
       ],
       async (req: Request, res: Response, next: NextFunction) => {

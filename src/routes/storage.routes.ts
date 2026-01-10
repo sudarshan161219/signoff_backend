@@ -90,7 +90,7 @@ export class StorageRouter {
     );
 
     // Single Delete via Param (Optional, handled by same controller logic)
-    this.router.delete(
+    this.router.post(
       "/:id",
       requireProjectAdmin,
       wrapWithAuthFileRequest(

@@ -1,6 +1,8 @@
 import "reflect-metadata";
 import express, { Application } from "express";
 import cors from "cors";
+import { createServer, Server } from "node:http";
+import { initSocket } from "./socket";
 import helmet from "helmet";
 import * as dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
@@ -12,11 +14,13 @@ dotenv.config();
 
 export class App {
   public app: Application;
+  public server: Server;
   public port: number;
   private prisma = prisma;
 
   constructor() {
     this.app = express();
+    this.server = createServer(this.app);
     this.port = Number(process.env.PORT) || 8080;
 
     this.app.set("trust proxy", 1);
@@ -36,7 +40,7 @@ export class App {
         origin:
           process.env.NODE_ENV === "production"
             ? process.env.FRONTEND_URL
-            : ["https://signoff-one.vercel.app"],
+            : ["http://localhost:5173"],
         credentials: true,
       })
     );
@@ -75,7 +79,10 @@ export class App {
 
     await this.prisma.$connect();
 
-    this.app.listen(this.port, () => {
+    // 🔌 Initialize Socket.IO BEFORE listen
+    initSocket(this.server);
+
+    this.server.listen(this.port, () => {
       console.log(`🚀 Server running on port ${this.port}`);
     });
 

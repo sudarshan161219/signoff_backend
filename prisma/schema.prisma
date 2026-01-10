@@ -12,18 +12,11 @@ model Project {
   id          String   @id @default(uuid())
   name        String
   
-  // --- AUTHENTICATION (The "No Sign-Up" Magic) ---
-  // The Freelancer's Secret Key (stored in LocalStorage)
-  // Access: Can see audit logs, upload files, delete project
   adminToken  String   @unique @default(uuid()) 
-  
-  // The Client's Share Key (sent via URL)
-  // Access: Can only View, Approve, or Reject
   publicToken String   @unique @default(uuid()) 
   
   // --- WORKFLOW STATE ---
-  status      Status   @default(PENDING)
-
+  status     ProjectStatus @default(PENDING)
   expiresAt DateTime?
 
   
@@ -31,18 +24,18 @@ model Project {
   updatedAt   DateTime @updatedAt
   
 
-  // --- RELATIONS ---
-  // "File?" is optional because Project is created BEFORE upload finishes
   file        File?    
-  approvalDecision ApprovalDecision[]
+  decisions ApprovalDecision[]
   logs        AuditLog[]
 }
 
 model ApprovalDecision {
   id          String   @id @default(uuid())
 
-  decision    Status  
+  type          ApprovalDecisionType 
   comment     String?
+
+  actorRole     ActorRole?
 
   // Trust metadata
   clientName  String?
@@ -77,7 +70,8 @@ model File {
 model AuditLog {
   id          String   @id @default(uuid())
   action      LogAction
-  
+  actorRole  ActorRole
+
   // Metadata for the "Trust" factor
   ipAddress   String?
   userAgent   String?  // e.g. "Chrome on iPhone"
@@ -89,14 +83,26 @@ model AuditLog {
 }
 
 // --- ENUMS (Strict Typing) ---
-enum Status {
+enum ActorRole {
+  ADMIN
+  CLIENT
+}
+
+enum ProjectStatus {
   PENDING
+  APPROVED
+  CHANGES_REQUESTED
+  EXPIRED
+}
+
+enum ApprovalDecisionType {
   APPROVED
   CHANGES_REQUESTED
 }
 
 enum LogAction {
   PROJECT_CREATED
+  PROJECT_UPDATED
   FILE_UPLOADED
   CLIENT_VIEWED
   CLIENT_APPROVED

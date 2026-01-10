@@ -10,7 +10,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2 } from "../lib/r2";
 import { randomUUID } from "crypto";
-import { LogAction } from "@prisma/client";
+import { LogAction, ActorRole } from "@prisma/client";
 
 @injectable()
 export class StorageService {
@@ -52,54 +52,63 @@ export class StorageService {
     projectId: string;
   }) {
     if (!data.key || !data.projectId) {
-      throw new AppError({ message: "Invalid upload data", statusCode: 400 });
+      throw new AppError({
+        message: "Invalid upload data",
+        statusCode: 400,
+      });
     }
 
-    // Use a Transaction to keep DB state clean
-    return await prisma.$transaction(async (tx) => {
-      // A. Check if this project already has a file (Cleanup)
+    const result = await prisma.$transaction(async (tx) => {
+      // A. Check if project already has a file
       const existingFile = await tx.file.findUnique({
         where: { projectId: data.projectId },
       });
 
       if (existingFile) {
-        // 1. Delete old record from DB
+        // 1. Delete old DB record
         await tx.file.delete({
           where: { id: existingFile.id },
         });
 
-        // 2. Delete old file from R2 (Async - don't await/block the user)
+        // 2. Delete old file from R2 (non-blocking)
         this.deleteObjectFromR2(existingFile.storageKey).catch(console.error);
       }
 
-      // B. Create the new File record
+      // B. Create new file record
       const newFile = await tx.file.create({
         data: {
-          fileName: data.filename, // Note: Schema uses 'fileName'
+          fileName: data.filename,
           mimeType: data.mimeType,
           size: data.size,
-          storageKey: data.key, // Note: Schema uses 'storageKey'
+          storageKey: data.key,
           projectId: data.projectId,
         },
       });
 
-      // C. Add Audit Log
+      // C. Audit log (ADMIN action)
       await tx.auditLog.create({
         data: {
           action: LogAction.FILE_UPLOADED,
+          actorRole: ActorRole.ADMIN,
           projectId: data.projectId,
         },
       });
 
       return newFile;
     });
+
+    return result;
   }
 
   /**
    * 3. GET DOWNLOAD LINK
    * Generates a signed GET url for viewing/downloading.
    */
-  async getDownloadUrl(fileId: string, projectId: string) {
+  async getDownloadUrl(
+    fileId: string,
+    projectId: string,
+    forceDownload = false
+  ) {
     const file = await prisma.file.findUnique({
       where: { id: fileId, projectId },
     });
@@ -112,7 +121,9 @@ export class StorageService {
       Bucket: this.bucket,
       Key: file.storageKey,
       // This forces the browser to download nicely with the real name
-      ResponseContentDisposition: `attachment; filename="${file.fileName}"`,
+      ResponseContentDisposition: forceDownload
+        ? `attachment; filename="${file.fileName}"`
+        : "inline",
     });
 
     // Link valid for 1 hour
@@ -124,7 +135,27 @@ export class StorageService {
   /**
    * 4. DELETE FILE
    */
-  async deleteAttachments(fileId: string, projectId: string) {
+  async deleteAttachments(
+    fileId: string,
+    projectId: string,
+    adminToken: string
+  ) {
+    // 1. Verify Project & Token Match
+    // We check if the project exists AND if the provided token matches the stored adminToken
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { adminToken: true }, // Select only what we need
+    });
+
+    if (!project || project.adminToken !== adminToken) {
+      throw new AppError({
+        message: "Unauthorized access",
+        statusCode: 401, // Using 401 for invalid credentials
+      });
+    }
+
+    // 2. Find the file
+    // Ensure the file actually belongs to this project
     const file = await prisma.file.findUnique({
       where: { id: fileId, projectId },
     });
@@ -133,17 +164,16 @@ export class StorageService {
       throw new AppError({ message: "File not found", statusCode: 404 });
     }
 
-    // 1. Delete from R2
+    // 3. Delete from R2 Storage
     await this.deleteObjectFromR2(file.storageKey);
 
-    // 2. Delete from DB
+    // 4. Delete from Database
     await prisma.file.delete({
       where: { id: fileId },
     });
 
     return { success: true };
   }
-
   /**
    * Helper: Get all attachments for a project
    * (Used by the Dashboard to list files)

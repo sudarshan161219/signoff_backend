@@ -1,10 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import { injectable, inject } from "inversify";
-import { TYPES } from "../types/types"; // Ensure this matches your types file
+import { TYPES } from "../types/types";
 import { ProjectService } from "../services/project.service";
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../errors/AppError";
-import { Status } from "@prisma/client";
+import { ApprovalDecisionType, ProjectStatus } from "@prisma/client";
+import { getIO } from "../socket/index";
 
 @injectable()
 export class ProjectController {
@@ -109,19 +110,18 @@ export class ProjectController {
   }
 
   /**
-   * UPDATE STATUS
+   * UPDATE STATUS (Client approves / requests changes)
    * POST /api/projects/:token/status
    */
   async updateStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const { token } = req.params;
-      const { status, comment } = req.body;
+      const { decision, comment } = req.body;
 
       const ip =
         (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
       const userAgent = req.headers["user-agent"];
 
-      // Validation
       if (!token) {
         throw new AppError({
           message: "Token is required",
@@ -129,31 +129,47 @@ export class ProjectController {
         });
       }
 
-      const validStatuses = [Status.APPROVED, Status.CHANGES_REQUESTED];
-      if (!validStatuses.includes(status)) {
+      // Validate decision
+      const validDecisions = [
+        ApprovalDecisionType.APPROVED,
+        ApprovalDecisionType.CHANGES_REQUESTED,
+      ];
+
+      if (!validDecisions.includes(decision)) {
         throw new AppError({
-          message: `Invalid status. Must be one of: ${validStatuses.join(
+          message: `Invalid decision. Must be one of: ${validDecisions.join(
             ", "
           )}`,
           statusCode: StatusCodes.BAD_REQUEST,
         });
       }
 
-      // Call Service
       const result = await this.projectService.updateStatus(
         token,
-        status,
+        decision,
         comment,
         ip,
         userAgent
       );
 
-      res.status(StatusCodes.OK).json({
+      try {
+        const io = getIO();
+        // Emit to room: "project:{projectId}"
+        // 'result' must contain the project 'id'
+        io.to(`project:${result.id}`).emit("project-status-updated", {
+          status: result.status,
+          latestComment: result.latestComment ?? null,
+        });
+      } catch (err) {
+        console.error("⚠️ Socket emit failed (non-critical):", err);
+      }
+
+      return res.status(StatusCodes.OK).json({
         message: "Status updated",
         data: {
-          status: result.status,
+          status: result.status, // ProjectStatus
           updatedAt: result.updatedAt,
-          comment: result.approvalDecision,
+          comment: result.latestComment ?? null,
         },
       });
     } catch (error) {
@@ -170,7 +186,7 @@ export class ProjectController {
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         throw new AppError({ message: "Unauthorized", statusCode: 401 });
       }
-      const token = authHeader.split(" ")[1]; // <--- This gets the actual token
+      const token = authHeader.split(" ")[1];
 
       // 2. GET DAYS FROM BODY
       const { days } = req.body;
@@ -186,6 +202,15 @@ export class ProjectController {
         token,
         Number(days)
       );
+
+      try {
+        const io = getIO();
+        io.to(`project:${project.id}`).emit("project-expiration-updated", {
+          expiresAt: project.expiresAt,
+        });
+      } catch (err) {
+        console.error("⚠️ Socket emit failed:", err);
+      }
 
       res.status(200).json({ data: project });
     } catch (error) {
