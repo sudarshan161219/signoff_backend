@@ -11,6 +11,9 @@ export function addRoutes(app: Application): Application {
   const storageRouter = container.get<StorageRouter>(TYPES.StorageRouter);
 
   // app.use("/api/auth", authRouter.router);
+  app.get("/", (req, res) => {
+    res.send("API Version: DEBUG-SOCKET-TEST");
+  });
   app.use("/api/projects", projectRouter.router);
   app.use("/api/storage", storageRouter.router);
 
