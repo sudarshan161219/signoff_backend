@@ -137,6 +137,7 @@ export class ProjectService {
     const latestDecision = project.decisions[0];
 
     return {
+      id: project.id,
       name: project.name,
       status: project.status,
       expiresAt: project.expiresAt, // Keep this for the "30 Days Left" badge
