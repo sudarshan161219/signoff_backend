@@ -32,7 +32,19 @@ export class App {
   }
 
   private initializeMiddlewares() {
-    this.app.use(helmet());
+    this.app.use(
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+            "connect-src": [
+              "'self'",
+              process.env.FRONTEND_URL || "http://localhost:5173",
+            ],
+          },
+        },
+      })
+    );
     this.app.use(express.json());
 
     this.app.use(
