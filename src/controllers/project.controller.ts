@@ -156,7 +156,7 @@ export class ProjectController {
         const io = getIO();
         // Emit to room: "project:{projectId}"
         // 'result' must contain the project 'id'
-        io.to(`project:${result.id}`).emit("project-status-updated", {
+        io.to(result.id).emit("project-status-updated", {
           status: result.status,
           latestComment: result.latestComment ?? null,
         });
@@ -205,7 +205,7 @@ export class ProjectController {
 
       try {
         const io = getIO();
-        io.to(`project:${project.id}`).emit("project-expiration-updated", {
+        io.to(project.id).emit("project-expiration-updated", {
           expiresAt: project.expiresAt,
         });
       } catch (err) {

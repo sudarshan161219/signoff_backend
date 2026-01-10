@@ -153,7 +153,7 @@ export class StorageController {
       // 2. SOCKET EMIT: File Uploaded
       try {
         const io = getIO();
-        io.to(`project:${projectId}`).emit("file-uploaded", attachment);
+        io.to(projectId).emit("file-uploaded", attachment);
       } catch (err) {
         console.error("⚠️ Socket emit failed (non-critical):", err);
       }
@@ -269,7 +269,7 @@ export class StorageController {
       // 3. SOCKET EMIT: File Deleted
       try {
         const io = getIO();
-        io.to(`project:${projectId}`).emit("file-deleted", { fileId });
+        io.to(projectId).emit("file-deleted", { fileId });
       } catch (err) {
         console.error("⚠️ Socket emit failed (non-critical):", err);
       }
