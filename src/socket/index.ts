@@ -26,10 +26,18 @@ export const initSocket = (httpServer: HttpServer) => {
     });
 
     // 👇 THIS IS THE MISSING PIECE 👇
-    socket.on("join_project", (projectId: string) => {
-      // 1. Actually add the socket to the room
-      socket.join(projectId);
-      console.log(`User ${socket.id} joined room: ${projectId}`);
+    socket.on("join-project", (data: { projectId: string }) => {
+      const roomId = data.projectId;
+
+      if (roomId) {
+        socket.join(roomId);
+        console.log(`✅ User ${socket.id} joined room: ${roomId}`);
+      } else {
+        console.error(
+          "⚠️ Client sent join-project but missing projectId:",
+          data
+        );
+      }
     });
     // 👆 WITHOUT THIS, MESSAGES GO NOWHERE 👆
 
