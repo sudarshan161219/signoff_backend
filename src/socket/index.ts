@@ -21,6 +21,10 @@ export const initSocket = (httpServer: HttpServer) => {
   io.on("connection", (socket: Socket) => {
     console.log(`✅ User connected: ${socket.id}`);
 
+    socket.onAny((eventName, ...args) => {
+      console.log(`🕵️ SERVER RECEIVED: [${eventName}]`, args);
+    });
+
     // 👇 THIS IS THE MISSING PIECE 👇
     socket.on("join_project", (projectId: string) => {
       // 1. Actually add the socket to the room
